@@ -138,6 +138,35 @@ def run_performance_benchmarks():
         print(f"  Theoretical trials (ln n): ~{theoretical:.2f}")
         print(f"  Ratio (actual/theoretical): {trials/theoretical:.4f}")
 
+def run_root_benchmark():
+    print("\n--- Benchmark for integer_nth_root ---")
+    try:
+        from pa14_crt_rsa import integer_nth_root
+        
+        e = 3
+        # Test 10k bits
+        bits = 10000
+        x = (1 << bits) + 7
+        print(f"Testing {bits} bits...")
+        start = time.time()
+        root = integer_nth_root(x, e)
+        end = time.time()
+        print(f"Result: {root % 1000}...")
+        print(f"Time taken: {end - start:.6f}s")
+        
+        # Test 100k bits
+        bits = 100000
+        x = (1 << bits) + 123
+        print(f"Testing {bits} bits...")
+        start = time.time()
+        root = integer_nth_root(x, e)
+        end = time.time()
+        print(f"Result: {root % 1000}...")
+        print(f"Time taken: {end - start:.6f}s")
+    except ImportError:
+        print("Could not import integer_nth_root from pa14_crt_rsa.")
+
 if __name__ == "__main__":
     run_carmichael_demo()
     run_performance_benchmarks()
+    run_root_benchmark()
