@@ -1,4 +1,6 @@
 import os
+from pa1 import get_random_range
+from pa13_primality import gen_prime, is_prime, modular_exponentiation
 
 # --- Group parameters (safe prime p = 2q+1) ---
 P = 0xFFFFFFFB
@@ -7,6 +9,24 @@ G = 3
 
 def rand_exp() -> int:
     return int.from_bytes(os.urandom(4), "big") % Q + 1
+
+def generate_group(bits: int):
+    """
+    Generates a safe prime p = 2q + 1 where q is prime, of roughly bits size.
+    Returns (p, g, q) where g is a generator of the subgroup of order q.
+    """
+    while True:
+        q, _ = gen_prime(bits - 1, k=10)
+        p = 2 * q + 1
+        if is_prime(p, k=10) and is_prime(p, k=40):
+            break
+    
+    # Find generator g of order q
+    while True:
+        h = get_random_range(2, p - 2)
+        g = modular_exponentiation(h, 2, p)
+        if g != 1:
+            return p, g, q
 
 # --- Alice ---
 def dh_alice_step1():

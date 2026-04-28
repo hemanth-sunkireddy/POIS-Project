@@ -21,6 +21,13 @@ def dlp_compress(cv: int, block: bytes) -> int:
 def dlp_hash(message: bytes) -> int:
     return merkle_damgard(dlp_compress, message, block_size=8, iv=1)
 
+def hash_message(m: bytes) -> int:
+    """
+    Collision-resistant hash function for PA#15.
+    Returns the DLP hash as an integer.
+    """
+    return dlp_hash(m)
+
 # --- Collision resistance demo ---
 def brute_collision(n_bits=12, limit=500):
     seen = {}

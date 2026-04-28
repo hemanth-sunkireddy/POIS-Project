@@ -20,6 +20,38 @@ def owf_from_prg(s: int, length=16) -> int:
     bits = prg(s, length)
     return int("".join(str(b) for b in bits), 2)
 
+def _ensure_seed():
+    if _state["seed"] is None:
+        _state["seed"] = int.from_bytes(os.urandom(8), "big")
+
+def _get_random_int(n_bits: int) -> int:
+    if n_bits < 1:
+        raise ValueError("n_bits must be >= 1")
+    _ensure_seed()
+    bits = next_bits(n_bits)
+    value = 0
+    for b in bits:
+        value = (value << 1) | b
+    return value
+
+def get_random_bits(n_bits: int) -> int:
+    """Returns a random integer with exactly n_bits using the internal PRG."""
+    value = _get_random_int(n_bits)
+    return value | (1 << (n_bits - 1))
+
+def get_random_range(start: int, end: int) -> int:
+    """Returns a random integer in [start, end] using rejection sampling."""
+    if start > end:
+        raise ValueError("start must be <= end")
+    diff = end - start
+    if diff == 0:
+        return start
+    n_bits = diff.bit_length()
+    while True:
+        value = _get_random_int(n_bits)
+        if value <= diff:
+            return start + value
+
 # --- NIST Test 1: Frequency ---
 def freq_test(bits: list) -> float:
     n = len(bits)
@@ -57,6 +89,7 @@ def seed(s: int):
     _state["seed"] = s
 
 def next_bits(n: int) -> list:
+    _ensure_seed()
     bits = prg(_state["seed"], n)
     _state["seed"] = owf(_state["seed"])
     return bits
