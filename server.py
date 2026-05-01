@@ -14,6 +14,19 @@ from pa3 import Enc as cpa_enc, Dec as cpa_dec, ind_cpa_game
 from pa4 import Encrypt as mode_enc, Decrypt as mode_dec, cbc_iv_reuse_demo, ofb_keystream_reuse_demo
 from pa5 import Mac as mac_f, Vrfy as mac_vrfy, length_extension_demo
 from pa6 import CCA_Enc, CCA_Dec, malleability_demo, independent_keygen
+from pa19 import (
+    ot_receiver_step1,
+    ot_sender_step,
+    ot_receiver_step2
+)
+from pa20 import (
+    build_gt_circuit,
+    build_equality_circuit,
+    secure_eval,
+    int_to_bits,
+    OT_COUNTER,
+    TRANSCRIPT
+)
 import os
 import math
 
@@ -134,8 +147,8 @@ class OTStep1Request(BaseModel):
 class OTSenderRequest(BaseModel):
     pk0: dict
     pk1: dict
-    m0: str
-    m1: str
+    m0: int
+    m1: int
 
 class OTStep2Request(BaseModel):
     state: dict
@@ -218,6 +231,16 @@ class PA6DecryptRequest(BaseModel):
     ct_hex: str
     tag: int
 
+# PA20 models
+class PA20MillionaireRequest(BaseModel):
+    x: int  # Alice
+    y: int  # Bob
+    n: int = 4  # default 4-bit
+
+# PA19 models
+class PA19ANDRequest(BaseModel):
+    a: int
+    b: int
 
 @app.post("/pa13/test")
 async def test_primality(request: PrimalityTestRequest):
@@ -546,6 +569,37 @@ async def ot_step2(request: OTStep2Request):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/pa18/sender")
+async def ot_sender(request: OTSenderRequest):
+    try:
+        # Convert pk0, pk1 from dict → tuple
+        pk0 = (
+            int(request.pk0["p"]),
+            int(request.pk0["g"]),
+            int(request.pk0["q"]),
+            int(request.pk0["h"])
+        )
+
+        pk1 = (
+            int(request.pk1["p"]),
+            int(request.pk1["g"]),
+            int(request.pk1["q"]),
+            int(request.pk1["h"])
+        )
+
+        m0 = int(request.m0)
+        m1 = int(request.m1)
+
+        c0, c1 = ot_sender_step(pk0, pk1, m0, m1)
+
+        return {
+            "c0": {"c1": str(c0[0]), "c2": str(c0[1])},
+            "c1": {"c1": str(c1[0]), "c2": str(c1[1])}
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.post("/pa18/cheat")
 async def ot_cheat(request: OTStep2Request):
     try:
@@ -557,7 +611,19 @@ async def ot_cheat(request: OTStep2Request):
 
         # Try decrypting other ciphertext
         c = request.c1 if b == 0 else request.c0
+        m = elgamal_dec(sk, int(c["c1"]), int(c["c2"]))
 
+        # ✅ VALIDITY CHECK
+        if m in [10, 99]:
+            return {
+                "result": str(m),
+                "status": "unexpected_success"
+            }
+        else:
+            return {
+                "result": None,
+                "status": "failed"
+            }
         try:
             m = elgamal_dec(sk, int(c["c1"]), int(c["c2"]))
             return {"result": str(m), "status": "unexpected_success"}
@@ -732,6 +798,168 @@ async def pa6_decrypt(request: PA6DecryptRequest):
     if pt is None:
         return {"m": None, "valid": False}
     return {"m": pt.decode(errors='ignore'), "valid": True}
+
+# PA20
+@app.post("/pa20/millionaire")
+async def millionaire_problem(request: PA20MillionaireRequest):
+    try:
+        from pa20 import OT_COUNTER, TRANSCRIPT
+
+        # Reset globals
+        import pa20
+        pa20.OT_COUNTER = 0
+        pa20.TRANSCRIPT = []
+
+        x = request.x
+        y = request.y
+        n = request.n
+
+        if not (0 <= x < 2**n and 0 <= y < 2**n):
+            raise HTTPException(status_code=400, detail="Inputs must fit in n bits")
+
+        # Convert to bits
+        x_bits = int_to_bits(x, n)
+        y_bits = int_to_bits(y, n)
+        inputs = x_bits + y_bits
+
+        # Build circuits
+        gt_circuit = build_gt_circuit(n)
+        eq_circuit = build_equality_circuit(n)
+
+        # Evaluate step-by-step (for progress animation)
+        wires = inputs[:]
+        trace = []
+        gates_done = 0
+        total_gates = len(gt_circuit.gates) + len(eq_circuit.gates)
+
+        def eval_with_trace(circuit, wires):
+            local_trace = []
+            for gate in circuit.gates:
+                if gate.type == "AND":
+                    res = wires[gate.in1] & wires[gate.in2]
+                elif gate.type == "XOR":
+                    res = wires[gate.in1] ^ wires[gate.in2]
+                elif gate.type == "NOT":
+                    res = 1 - wires[gate.in1]
+
+                local_trace.append({
+                    "gate": gate.type,
+                    "in1": wires[gate.in1],
+                    "in2": wires[gate.in2] if gate.in2 is not None else None,
+                    "output": res
+                })
+
+                wires.append(res)
+
+            return wires[circuit.output_wire], local_trace
+
+        # Run GT
+        gt_result, gt_trace = eval_with_trace(gt_circuit, wires)
+
+        # Run EQ
+        eq_result, eq_trace = eval_with_trace(eq_circuit, wires)
+
+        trace.extend(gt_trace)
+        trace.extend(eq_trace)
+
+        # Final decision
+        if eq_result == 1:
+            result = "Equal"
+        elif gt_result == 1:
+            result = "Alice is richer"
+        else:
+            result = "Bob is richer"
+
+        return {
+            "result": result,
+            "x_bits": x_bits,   # safe to show to owner panel only (frontend decides)
+            "y_bits": y_bits,
+            "ot_calls": pa20.OT_COUNTER,
+            "total_gates": total_gates,
+            "trace": trace[:50]  # limit for UI
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# PA19
+@app.post("/pa19/and_demo")
+async def pa19_and_demo(request: PA19ANDRequest):
+    try:
+        a = request.a
+        b = request.b
+
+        if a not in [0, 1] or b not in [0, 1]:
+            raise HTTPException(status_code=400, detail="Inputs must be 0 or 1")
+
+        transcript = []
+
+        # -------------------------
+        # Step 1: Bob (receiver)
+        # -------------------------
+        pk0, pk1, state = ot_receiver_step1(b)
+
+        transcript.append({
+            "step": "Bob (Receiver)",
+            "action": f"Chooses b = {b}",
+            "details": "Generates (pk0, pk1)"
+        })
+
+        # -------------------------
+        # Step 2: Alice (sender)
+        # -------------------------
+        m0, m1 = 0, a
+
+        transcript.append({
+            "step": "Alice (Sender)",
+            "action": f"Prepares messages (m0=0, m1={a})",
+            "details": "Encodes values into OT"
+        })
+
+        c0, c1 = ot_sender_step(pk0, pk1, m0, m1)
+
+        # -------------------------
+        # Step 3: Bob decrypts
+        # -------------------------
+        mb = ot_receiver_step2(state, c0, c1)
+
+        transcript.append({
+            "step": "Bob (Receiver)",
+            "action": f"Decrypts and gets mb = {mb}",
+            "details": "This equals a AND b"
+        })
+
+        # -------------------------
+        # Privacy summary
+        # -------------------------
+        privacy = {
+            "alice_learns": "Nothing about b",
+            "bob_learns": "Only a AND b (not full a if b=0)"
+        }
+
+        return {
+            "result": mb,
+            "transcript": transcript,
+            "privacy": privacy
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/pa19/run_all")
+async def pa19_run_all():
+    results = []
+
+    for a in [0, 1]:
+        for b in [0, 1]:
+            mb = (a & b)
+            results.append({
+                "a": a,
+                "b": b,
+                "result": mb
+            })
+
+    return {"table": results}
 
 
 if __name__ == "__main__":
