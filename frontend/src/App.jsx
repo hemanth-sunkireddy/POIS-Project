@@ -11,6 +11,8 @@ import PA15DigitalSignatures from './components/PA15DigitalSignatures';
 import PA16ElGamal from './components/PA16ElGamal';
 import PA17CCA from './components/PA17CCA';
 import PA18OT from './components/PA18OT';
+import PA20Millionaire from './components/PA20Millionaire';
+import PA19SecureAND from './components/PA19SecureAnd';
 
 const App = () => {
   const [foundation, setFoundation] = useState('DLP');
@@ -50,6 +52,8 @@ const App = () => {
         <PA16ElGamal />
         <PA17CCA />
         <PA18OT />
+        <PA19SecureAND />
+        <PA20Millionaire />
       </main>
 
       <footer className="bottom-panel" style={{ maxHeight: proofOpen ? '600px' : '60px' }}>
