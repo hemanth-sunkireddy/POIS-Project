@@ -39,6 +39,58 @@ def independent_keygen():
     kM = os.urandom(1)[0]
     return kE, kM
 
+def key_reuse_demo(k: int, m: bytes):
+    """
+    Demonstrates that reusing a single key for both encryption and MAC
+    creates exploitable correlations.
+    
+    When kE == kM == k:
+    - The PRF used for encryption keystream and the PRF used for MAC
+      are keyed identically.
+    - An adversary can correlate MAC tags with ciphertext blocks,
+      potentially leaking information about the plaintext.
+    """
+    print("\n--- Key Reuse Demo ---")
+    
+    # Honest usage: independent keys
+    kE, kM = independent_keygen()
+    c1, t1 = CCA_Enc(kE, kM, m)
+    c2, t2 = CCA_Enc(kE, kM, m)
+    print(f"  [Independent keys] kE={kE:#04x}, kM={kM:#04x}")
+    print(f"  Enc1 tag: {t1:#04x}, Enc2 tag: {t2:#04x}")
+    print(f"  Tags differ (fresh nonce): {t1 != t2}")
+
+    # Reused key: kE == kM == k
+    c3, t3 = CCA_Enc(k, k, m)
+    c4, t4 = CCA_Enc(k, k, m)
+    print(f"\n  [Reused key] kE=kM={k:#04x}")
+    print(f"  Enc1 tag: {t3:#04x}, Enc2 tag: {t4:#04x}")
+
+    # Show the correlation: MAC tag is computed over ciphertext
+    # which itself was produced using the same key k.
+    # The MAC's PRF and the encryption's PRF share the same key,
+    # so the tag leaks structural information about the keystream.
+    r3, ct3 = c3
+    c3_serialized = r3.to_bytes(4, "big") + ct3
+    
+    # Adversary observation: with key reuse, the MAC tag over the
+    # ciphertext can be correlated with the encryption keystream.
+    # Specifically, the first MAC chaining value = Fk(0 XOR c3_serialized[0])
+    # = Fk(c3_serialized[0]), which uses the same Fk as encryption.
+    # This means an adversary who observes multiple (c, t) pairs
+    # under the same reused key can detect patterns.
+    first_mac_block = c3_serialized[0]
+    from pa2 import F
+    from pa5 import Fk
+    keystream_byte = Fk(k, 0) & 0xFF   # first keystream byte used in encryption
+    mac_first_step = Fk(k, first_mac_block)  # first MAC chaining step
+    
+    print(f"\n  Correlation analysis (key reuse kE=kM={k:#04x}):")
+    print(f"    Encryption keystream byte 0 : {keystream_byte:#04x}")
+    print(f"    MAC first chaining value    : {mac_first_step:#04x}")
+    print(f"    Both derived from same key  -> structural leakage possible")
+    print(f"  Verdict: Key reuse is UNSAFE. Always use independent kE and kM.")
+
 # --- 3. Malleability Comparison ---
 def malleability_demo(kE, kM, m):
     print("\n--- Malleability Comparison ---")
@@ -84,6 +136,7 @@ def ind_cca2_game(kE, kM, rounds=100):
             correct += 1
             
     advantage = abs(correct/rounds - 0.5)
+    print(f"  Correct guesses: {correct}/{rounds}")
     print(f"  Advantage: {advantage:.3f} (Expect ~0 for secure scheme)")
 
 if __name__ == "__main__":
@@ -101,6 +154,9 @@ if __name__ == "__main__":
     print(f"Cipher   : {c}")
     print(f"MAC Tag  : {t:#04x}")
     print(f"Decrypted: {pt}")
+    
+    # Key reuse demo (new)
+    key_reuse_demo(kE, m)
     
     malleability_demo(kE, kM, m)
     ind_cca2_game(kE, kM)
