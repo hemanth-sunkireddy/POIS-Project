@@ -97,6 +97,53 @@ class DLPHash:
 
         return state.to_bytes(self.output_bytes, "big")
 
+_GLOBAL_GROUP = None
+
+def get_global_group():
+    global _GLOBAL_GROUP
+    if _GLOBAL_GROUP is None:
+        import random as py_random
+        state = py_random.getstate()
+        py_random.seed(42) # Fixed seed for deterministic group
+        
+        class DeterministicGroup(DLPGroup):
+            def _is_prime(self, n, k=5):
+                if n < 2: return False
+                for _ in range(k):
+                    a = py_random.randint(2, n - 1)
+                    if pow(a, n - 1, n) != 1: return False
+                return True
+            def _generate_prime(self, bits):
+                while True:
+                    candidate = py_random.getrandbits(bits) | 1
+                    if self._is_prime(candidate): return candidate
+            def __init__(self, bits=64):
+                self.q = self._generate_prime(bits - 1)
+                self.p = 2 * self.q + 1
+                while not self._is_prime(self.p):
+                    self.q = self._generate_prime(bits - 1)
+                    self.p = 2 * self.q + 1
+                self.g = 2
+                while pow(self.g, self.q, self.p) != 1: self.g += 1
+                alpha = py_random.randint(1, self.q - 1)
+                self.h_hat = pow(self.g, alpha, self.p)
+
+        _GLOBAL_GROUP = DeterministicGroup(bits=64)
+        py_random.setstate(state)
+    return _GLOBAL_GROUP
+
+def hash_message(m: bytes) -> int:
+    group = get_global_group()
+    # Also need IV to be deterministic
+    import random as py_random
+    state = py_random.getstate()
+    py_random.seed(42)
+    hasher = DLPHash(group)
+    hasher.IV = py_random.randint(1, group.q - 1)
+    py_random.setstate(state)
+    
+    return int.from_bytes(hasher.hash(m), "big")
+
 
 # ============================================================
 # 4. COLLISION RESISTANCE DEMO

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 const PA16ElGamal = () => {
   const [m, setM] = useState('42');
-  const [bits, setBits] = useState(128);
+  const [bits, setBits] = useState(32);
   const [keys, setKeys] = useState(null);
   const [ciphertext, setCiphertext] = useState(null);
   const [decryptedM, setDecryptedM] = useState(null);
@@ -48,12 +48,12 @@ const PA16ElGamal = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pk: keys.pk, m }),
       });
-      
+
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.detail || "Encryption failed");
       }
-      
+
       setCiphertext(data);
       setDecryptedM(null);
       setMalleableCiphertext(null);
@@ -93,11 +93,11 @@ const PA16ElGamal = () => {
       const response = await fetch('/api/pa16/malleability_attack', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            c1: ciphertext.c1, 
-            c2: ciphertext.c2, 
-            p: keys.pk.p, 
-            multiplier: "2" 
+        body: JSON.stringify({
+          c1: ciphertext.c1,
+          c2: ciphertext.c2,
+          p: keys.pk.p,
+          multiplier: "2"
         }),
       });
       const data = await response.json();
@@ -125,12 +125,12 @@ const PA16ElGamal = () => {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
         <div className="form-group">
           <label>Prime Modulus Size (bits): {bits}</label>
-          <input 
-            type="range" 
-            min="64" 
-            max="512" 
+          <input
+            type="range"
+            min="64"
+            max="512"
             step="64"
-            value={bits} 
+            value={bits}
             onChange={(e) => setBits(parseInt(e.target.value))}
           />
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
@@ -157,9 +157,9 @@ const PA16ElGamal = () => {
         <div className="form-group">
           <label>Plaintext Message (m ∈ ℤₚ)</label>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <input 
-              type="text" 
-              value={m} 
+            <input
+              type="text"
+              value={m}
               onChange={(e) => setM(e.target.value)}
               placeholder="Enter integer..."
               style={{ flex: 1 }}
@@ -174,18 +174,18 @@ const PA16ElGamal = () => {
           <div className="result-box" style={{ marginTop: 0 }}>
             <h4 style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Ciphertext (c₁, c₂)</h4>
             <div style={{ fontSize: '0.75rem', fontFamily: 'monospace', wordBreak: 'break-all', background: 'rgba(0,0,0,0.3)', padding: '0.5rem', borderRadius: '4px' }}>
-              <strong>c₁:</strong> {ciphertext.c1.substring(0, 40)}...<br/>
+              <strong>c₁:</strong> {ciphertext.c1.substring(0, 40)}...<br />
               <strong>c₂:</strong> {ciphertext.c2.substring(0, 40)}...
             </div>
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                <button className="btn-primary" onClick={() => decryptMessage(ciphertext.c1, ciphertext.c2)} style={{ padding: '0.4rem 1rem', fontSize: '0.875rem' }}>
-                    Decrypt
-                </button>
-                {decryptedM && (
-                    <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--accent)' }}>
-                        Result: {decryptedM}
-                    </div>
-                )}
+              <button className="btn-primary" onClick={() => decryptMessage(ciphertext.c1, ciphertext.c2)} style={{ padding: '0.4rem 1rem', fontSize: '0.875rem' }}>
+                Decrypt
+              </button>
+              {decryptedM && (
+                <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--accent)' }}>
+                  Result: {decryptedM}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -193,38 +193,38 @@ const PA16ElGamal = () => {
 
       {ciphertext && (
         <div className="result-box" style={{ border: '1px solid var(--danger)', background: 'rgba(239, 68, 68, 0.05)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ flex: 1 }}>
-                    <h3 style={{ fontSize: '1rem', color: 'var(--danger)', marginBottom: '0.5rem' }}>Malleability Attack (CCA Vulnerability)</h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                        Given $(c_1, c_2) = (g^r, m \cdot h^r)$, an attacker can compute $(c_1, 2c_2) = (g^r, (2m) \cdot h^r)$ which decrypts to $2m$.
-                    </p>
-                    <button className="btn-primary" onClick={runMalleabilityAttack} style={{ background: 'var(--danger)' }}>
-                        Multiply $c_2$ by 2 (Forge Ciphertext)
-                    </button>
-                </div>
-
-                {malleableCiphertext && (
-                    <div style={{ flex: 1, marginLeft: '2rem', padding: '1rem', background: 'rgba(0,0,0,0.3)', borderRadius: '8px' }}>
-                        <h4 style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Modified Ciphertext Decryption:</h4>
-                        <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--danger)', marginTop: '0.5rem' }}>
-                            {malleableDecrypted || '...'}
-                        </div>
-                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                            <strong>Analysis:</strong> The attacker successfully modified the ciphertext to encrypt a related message ($2m$) without knowing $m$ or the private key. This proves ElGamal is <strong>not CCA-secure</strong>.
-                        </p>
-                    </div>
-                )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <h3 style={{ fontSize: '1rem', color: 'var(--danger)', marginBottom: '0.5rem' }}>Malleability Attack (CCA Vulnerability)</h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                Given $(c_1, c_2) = (g^r, m \cdot h^r)$, an attacker can compute $(c_1, 2c_2) = (g^r, (2m) \cdot h^r)$ which decrypts to $2m$.
+              </p>
+              <button className="btn-primary" onClick={runMalleabilityAttack} style={{ background: 'var(--danger)' }}>
+                Multiply $c_2$ by 2 (Forge Ciphertext)
+              </button>
             </div>
+
+            {malleableCiphertext && (
+              <div style={{ flex: 1, marginLeft: '2rem', padding: '1rem', background: 'rgba(0,0,0,0.3)', borderRadius: '8px' }}>
+                <h4 style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Modified Ciphertext Decryption:</h4>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--danger)', marginTop: '0.5rem' }}>
+                  {malleableDecrypted || '...'}
+                </div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                  <strong>Analysis:</strong> The attacker successfully modified the ciphertext to encrypt a related message ($2m$) without knowing $m$ or the private key. This proves ElGamal is <strong>not CCA-secure</strong>.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {error && (
-        <div style={{ 
-          marginTop: '1.5rem', 
-          padding: '1rem', 
-          background: 'rgba(239, 68, 68, 0.1)', 
-          border: '1px solid var(--danger)', 
+        <div style={{
+          marginTop: '1.5rem',
+          padding: '1rem',
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid var(--danger)',
           borderRadius: '8px',
           color: 'var(--danger)',
           fontSize: '0.875rem'

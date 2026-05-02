@@ -8,9 +8,12 @@ def elgamal_keygen(bits: int):
     Generates a new ElGamal keypair.
     bits: approximate size of the prime p
     """
+    print("Bits: ", bits)
     p, g, q = generate_group(bits)
     x = random.randint(1, q - 1)
+    print("---> Elgama Before Modular Exponentiation")
     h = modular_exponentiation(g, x, p)
+    print("---> Elgama After Modular Exponentiation")
     sk = (x, p)  # passing p along with sk for decryption modulus
     pk = (p, g, q, h)
     return sk, pk

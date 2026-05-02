@@ -244,6 +244,7 @@ class PA19ANDRequest(BaseModel):
 
 @app.post("/pa13/test")
 async def test_primality(request: PrimalityTestRequest):
+    print("P13 Testing")
     try:
         n = int(request.n)
         start_time = time.time()
@@ -391,6 +392,7 @@ async def pa15_forge(request: PA15ForgeRequest):
 @app.post("/pa15/keygen")
 async def pa15_keygen(request: PA15KeygenRequest):
     try:
+        print("PA15 : Bits: ", request.bits)
         keys = rsa_keygen(request.bits)
         return {
             "pk": {"n": str(keys["n"]), "e": str(keys["e"])},

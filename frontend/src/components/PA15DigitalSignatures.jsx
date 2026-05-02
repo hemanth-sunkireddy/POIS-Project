@@ -59,12 +59,12 @@ const PA15DigitalSignatures = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sk: keys.sk, m_bytes_hex: mHex }),
       });
-      
+
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.detail || "Signing failed");
       }
-      
+
       setSignature(data.sigma);
       setVerificationResult(null);
     } catch (err) {
@@ -88,12 +88,12 @@ const PA15DigitalSignatures = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vk: keys.pk, m_bytes_hex: mHex, sigma: signature }),
       });
-      
+
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.detail || "Verification failed");
       }
-      
+
       setVerificationResult(data.valid);
     } catch (err) {
       setError("Verification Error: " + err.message);
@@ -116,30 +116,30 @@ const PA15DigitalSignatures = () => {
     setLoading(true);
     setError(null);
     try {
-        const n = BigInt(keys.sk.n);
-        const d = BigInt(keys.sk.d);
-        
-        // Use modPow instead of ** to avoid hanging
-        const s1 = modPow(BigInt(forgeData.m1), d, n);
-        const s2 = modPow(BigInt(forgeData.m2), d, n);
+      const n = BigInt(keys.sk.n);
+      const d = BigInt(keys.sk.d);
 
-        const response = await fetch('/api/pa15/forge_raw', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ s1: s1.toString(), s2: s2.toString(), n: keys.pk.n }),
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || 'Forgery failed');
-        }
-        
-        const data = await response.json();
-        setForgedSig(data.s3);
+      // Use modPow instead of ** to avoid hanging
+      const s1 = modPow(BigInt(forgeData.m1), d, n);
+      const s2 = modPow(BigInt(forgeData.m2), d, n);
+
+      const response = await fetch('/api/pa15/forge_raw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ s1: s1.toString(), s2: s2.toString(), n: keys.pk.n }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Forgery failed');
+      }
+
+      const data = await response.json();
+      setForgedSig(data.s3);
     } catch (err) {
-        setError("Forgery Error: " + err.message);
+      setError("Forgery Error: " + err.message);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -157,12 +157,12 @@ const PA15DigitalSignatures = () => {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
         <div className="form-group">
           <label>Modulus Size (bits): {bits * 2}</label>
-          <input 
-            type="range" 
-            min="32" 
-            max="128" 
+          <input
+            type="range"
+            min="32"
+            max="128"
             step="8"
-            value={bits} 
+            value={bits}
             onChange={(e) => setBits(parseInt(e.target.value))}
           />
           <button className="foundation-btn" onClick={generateKeys} disabled={loading} style={{ marginTop: '0.5rem' }}>
@@ -186,10 +186,10 @@ const PA15DigitalSignatures = () => {
       <div className="form-group">
         <label>Message to Sign</label>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <input 
-            type="text" 
-            value={message} 
-            onChange={(e) => {setMessage(e.target.value); setVerificationResult(null);}}
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => { setMessage(e.target.value); setVerificationResult(null); }}
             placeholder="Type a message..."
             style={{ flex: 1 }}
           />
@@ -203,11 +203,11 @@ const PA15DigitalSignatures = () => {
         <div className="result-box">
           <div style={{ marginBottom: '1rem' }}>
             <label>Signature (σ = H(m)ᵈ mod N)</label>
-            <div style={{ 
-              fontFamily: 'monospace', 
-              fontSize: '0.8rem', 
-              wordBreak: 'break-all', 
-              background: 'rgba(0,0,0,0.5)', 
+            <div style={{
+              fontFamily: 'monospace',
+              fontSize: '0.8rem',
+              wordBreak: 'break-all',
+              background: 'rgba(0,0,0,0.5)',
               padding: '0.75rem',
               borderRadius: '8px',
               marginTop: '0.25rem',
@@ -227,9 +227,9 @@ const PA15DigitalSignatures = () => {
           </div>
 
           {verificationResult !== null && (
-            <div style={{ 
-              marginTop: '1rem', 
-              padding: '0.75rem', 
+            <div style={{
+              marginTop: '1rem',
+              padding: '0.75rem',
               borderRadius: '8px',
               textAlign: 'center',
               fontWeight: 'bold',
@@ -251,24 +251,24 @@ const PA15DigitalSignatures = () => {
           Without hashing, RSA is multiplicatively homomorphic. Given signatures for $m_1$ and $m_2$, anyone can compute a valid signature for $m_1 \cdot m_2$.
         </p>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.875rem' }}>σ({forgeData.m1}) × σ({forgeData.m2}) = σ({parseInt(forgeData.m1) * parseInt(forgeData.m2)})</span>
-            <button className="foundation-btn" onClick={runForgeryDemo} style={{ marginLeft: 'auto', background: '#f59e0b', color: 'black' }}>
-                Forge Signature
-            </button>
+          <span style={{ fontSize: '0.875rem' }}>σ({forgeData.m1}) × σ({forgeData.m2}) = σ({parseInt(forgeData.m1) * parseInt(forgeData.m2)})</span>
+          <button className="foundation-btn" onClick={runForgeryDemo} style={{ marginLeft: 'auto', background: '#f59e0b', color: 'black' }}>
+            Forge Signature
+          </button>
         </div>
         {forgedSig && (
-            <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', fontFamily: 'monospace', wordBreak: 'break-all', color: '#f59e0b' }}>
-                <strong>Forged σ({parseInt(forgeData.m1) * parseInt(forgeData.m2)}):</strong> {forgedSig}
-            </div>
+          <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', fontFamily: 'monospace', wordBreak: 'break-all', color: '#f59e0b' }}>
+            <strong>Forged σ({parseInt(forgeData.m1) * parseInt(forgeData.m2)}):</strong> {forgedSig}
+          </div>
         )}
       </div>
 
       {error && (
-        <div style={{ 
-          marginTop: '1rem', 
-          padding: '1rem', 
-          background: 'rgba(239, 68, 68, 0.1)', 
-          border: '1px solid var(--danger)', 
+        <div style={{
+          marginTop: '1rem',
+          padding: '1rem',
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid var(--danger)',
           borderRadius: '8px',
           color: 'var(--danger)',
           fontSize: '0.875rem'

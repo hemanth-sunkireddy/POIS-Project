@@ -52,7 +52,8 @@ def euf_cma_game(adversary, vk, signing_oracle):
     # Check 2: sigma_star is a valid signature for m_star
     return rsa_verify(vk, m_star, sigma_star)
 
-def keygen(bits=512):
+def keygen(bits=64):
+    print("15th : Bits: ", bits)
     pk, sk_full = rsa_keygen(bits)
 
     N, e = pk
