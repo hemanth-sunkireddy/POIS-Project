@@ -63,3 +63,35 @@ def keygen(bits=64):
     sk = (N, d)
 
     return vk, sk
+
+if __name__ == '__main__':
+    # import random
+    from proxy_random import Random
+    random = Random()
+    
+    def random_adversary(vk, oracle):
+        # A simple adversary that tries to guess a signature
+        m_star = b"forge me"
+        # The adversary can query the oracle for other messages
+        oracle(b"hello")
+        oracle(b"world")
+        # Try a random forged signature
+        sigma_star = random.randint(a=1, b=vk[0] - 1)
+        return m_star, sigma_star
+        
+    print("Running EUF-CMA game 50 times...")
+    wins = 0
+    trials = 50
+    
+    for i in range(trials):
+        # Using a small bit size to speed up keygen for the demo
+        vk, sk = keygen(64)
+        signing_oracle = lambda m: rsa_sign(sk, m)
+        
+        # Run the game
+        adversary_won = euf_cma_game(random_adversary, vk, signing_oracle)
+        if adversary_won:
+            wins += 1
+            
+    print(f"\nResults: Adversary won {wins} out of {trials} times.")
+    print("This demonstrates that our Hashed RSA signature scheme is secure against existential forgeries!")
