@@ -29,8 +29,30 @@ from pa20 import (
     OT_COUNTER,
     TRANSCRIPT
 )
+from pa7 import md_pad, toy_compress, BLOCK_SIZE, IV
+from pa8 import hash_message
+from pa9 import trunc_hash
+from pa10 import HMAC
+from pa11 import (
+    P,
+    G,
+    Q,
+    dh_alice_step2,
+    dh_bob_step2,
+    mitm_attack
+)
+from pa12 import (
+    rsa_keygen,
+    rsa_enc,
+    pkcs15_enc
+)
+
+from proxy_random import random
+import hashlib
 import os
 import math
+
+
 
 def pkcs15_pad(m_bytes, n_bytes):
     msg_len = len(m_bytes)
@@ -49,6 +71,28 @@ def int_to_bytes(n):
 
 def bytes_to_int(b):
     return int.from_bytes(b, 'big')
+
+def pa8_parse_message(message: str, is_hex: bool = False):
+    if is_hex:
+        return bytes.fromhex(message)
+    return message.encode()
+
+def pa12_extract_padding(cipher_int, N):
+    k = (N.bit_length() + 7) // 8
+
+    em = cipher_int.to_bytes(k, "big")
+
+    if em[:2] != b"\x00\x02":
+        return ""
+
+    try:
+        sep = em.index(b"\x00", 2)
+    except ValueError:
+        return ""
+
+    ps = em[2:sep]
+
+    return ps.hex()
 
 
 app = FastAPI(title="Minicrypt Clique API")
@@ -257,6 +301,49 @@ class PA20MillionaireRequest(BaseModel):
 class PA19ANDRequest(BaseModel):
     a: int
     b: int
+
+# PA7 Models
+class PA7HashRequest(BaseModel):
+    message: str
+    is_hex: Optional[bool] = False
+
+class PA7EditBlockRequest(BaseModel):
+    blocks: List[str]   # hex blocks
+    start_cv: Optional[str] = "00000000"
+
+# PA8 Models
+class PA8HashRequest(BaseModel):
+    message: str
+    is_hex: Optional[bool] = False
+
+# PA9 Models
+class PA9AttackRequest(BaseModel):
+    n: int
+
+# PA10 Models
+class PA10ForgeryRequest(BaseModel):
+    suffix: str
+    hash_mode: str
+
+# PA11 Models
+class PA11ExchangeRequest(BaseModel):
+    a: Optional[int] = None
+    b: Optional[int] = None
+    eve_enabled: bool = False
+
+
+# -------------------------------------------------
+# PA12 GLOBAL RSA KEYS
+# -------------------------------------------------
+
+PA12_PK, PA12_SK = rsa_keygen(512)
+
+# PA12 Models
+class PA12EncryptRequest(BaseModel):
+    message: str
+    mode: str   # "textbook" or "pkcs15"
+
+
 
 # PA20 Millionaire endpoint
 @app.post("/pa20/millionaire")
@@ -1072,6 +1159,599 @@ async def pa19_run_all():
             })
 
     return {"table": results}
+
+# -------------------------
+# PA7 Helper Functions
+# -------------------------
+
+def pa7_parse_message(message: str, is_hex: bool = False) -> bytes:
+    if is_hex:
+        return bytes.fromhex(message)
+    return message.encode()
+
+
+def pa7_split_blocks(data: bytes, block_size=BLOCK_SIZE):
+    return [
+        data[i:i + block_size]
+        for i in range(0, len(data), block_size)
+    ]
+
+
+def pa7_compute_chain(blocks, iv=IV):
+    chain = []
+
+    z = iv
+    chain.append({
+        "label": "z0",
+        "value": f"{z:08x}"
+    })
+
+    for i, block in enumerate(blocks):
+        z_next = toy_compress(z, block)
+
+        chain.append({
+            "label": f"h(z{i}, M{i+1})",
+            "input_cv": f"{z:08x}",
+            "block": block.hex(),
+            "output_cv": f"{z_next:08x}"
+        })
+
+        z = z_next
+
+    return chain
+
+# -------------------------
+# PA7 - Merkle-Damgård Viewer
+# -------------------------
+
+@app.post("/pa7/view_chain")
+async def pa7_view_chain(request: PA7HashRequest):
+    try:
+        # Parse message
+        message_bytes = pa7_parse_message(
+            request.message,
+            request.is_hex
+        )
+
+        # MD strengthening padding
+        padded = md_pad(message_bytes, BLOCK_SIZE)
+
+        # Split into blocks
+        blocks = pa7_split_blocks(padded)
+
+        # Compute chaining values
+        chain = pa7_compute_chain(blocks)
+
+        # Final digest
+        final_digest = chain[-1]["output_cv"] if len(chain) > 1 else "00000000"
+
+        return {
+            "original_message": request.message,
+            "message_hex": message_bytes.hex(),
+            "block_size": BLOCK_SIZE,
+            "iv": f"{IV:08x}",
+            "padded_message": padded.hex(),
+            "blocks": [
+                {
+                    "index": i + 1,
+                    "hex": block.hex(),
+                    "ascii": ''.join(
+                        chr(b) if 32 <= b <= 126 else '.'
+                        for b in block
+                    )
+                }
+                for i, block in enumerate(blocks)
+            ],
+            "chain": chain,
+            "digest": final_digest
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/pa7/recompute_chain")
+async def pa7_recompute_chain(request: PA7EditBlockRequest):
+    try:
+        # Convert hex blocks to bytes
+        blocks = [bytes.fromhex(b) for b in request.blocks]
+
+        # Compute chain again
+        chain = pa7_compute_chain(blocks)
+
+        final_digest = chain[-1]["output_cv"] if len(chain) > 1 else "00000000"
+
+        return {
+            "blocks": [b.hex() for b in blocks],
+            "chain": chain,
+            "digest": final_digest
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# -------------------------------------------------
+# PA8 — DLP Hash
+# -------------------------------------------------
+
+@app.post("/pa8/hash")
+async def pa8_hash(request: PA8HashRequest):
+    try:
+        message_bytes = pa8_parse_message(
+            request.message,
+            request.is_hex
+        )
+
+        full_hash = hash_message(message_bytes)
+
+        toy_hash = full_hash & 0xFFFF
+
+        return {
+            "message": request.message,
+            "message_hex": message_bytes.hex(),
+            "full_hash_hex": hex(full_hash)[2:],
+            "toy_hash_hex": hex(toy_hash)[2:].zfill(4),
+            "toy_hash_int": toy_hash,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/pa8/collision_hunt")
+async def pa8_collision_hunt():
+    try:
+        seen = {}
+
+        attempts = 0
+
+        while True:
+            msg = os.urandom(4)
+
+            full_hash = hash_message(msg)
+
+            toy_hash = full_hash & 0xFFFF
+
+            attempts += 1
+
+            if toy_hash in seen:
+                return {
+                    "attempts": attempts,
+                    "collision_found": True,
+                    "hash_hex": hex(toy_hash)[2:].zfill(4),
+                    "m1": seen[toy_hash].hex(),
+                    "m2": msg.hex(),
+                    "progress": min(
+                        int((attempts / 256) * 100),
+                        100
+                    )
+                }
+
+            seen[toy_hash] = msg
+
+            if attempts % 10 == 0:
+                if attempts >= 256:
+                    return {
+                        "attempts": attempts,
+                        "collision_found": False,
+                        "progress": 100
+                    }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# # -------------------------------------------------
+# # PA9 — Live Birthday Attack
+# # -------------------------------------------------
+
+@app.post("/pa9/run_attack")
+async def pa9_run_attack(request: PA9AttackRequest):
+    try:
+        n = request.n
+
+        if n not in [8, 10, 12, 14, 16]:
+            raise HTTPException(
+                status_code=400,
+                detail="n must be one of {8,10,12,14,16}"
+            )
+
+        seen = {}
+
+        evaluations = 0
+
+        chart = []
+
+        expected = 2 ** (n / 2)
+
+        while True:
+            msg = os.urandom(4)
+
+            h = trunc_hash(msg, n)
+
+            evaluations += 1
+
+            # Birthday probability
+            probability = (
+                1 - math.exp(
+                    -(evaluations ** 2) / (2 * (2 ** n))
+                )
+            )
+
+            chart.append({
+                "k": evaluations,
+                "probability": probability
+            })
+
+            if h in seen and seen[h] != msg:
+                return {
+                    "collision_found": True,
+                    "n": n,
+                    "evaluations": evaluations,
+                    "expected": expected,
+                    "shared_hash": hex(h)[2:].zfill(n // 4),
+                    "m1": seen[h].hex(),
+                    "m2": msg.hex(),
+                    "chart": chart
+                }
+
+            seen[h] = msg
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+PA10_SECRET_KEY = b"super_secret_demo_key"
+
+PA10_ORIGINAL_MESSAGE = b"amount=100&to=alice"
+
+def pa10_naive_mac(hash_mode, key, message):
+    if hash_mode == "dlp":
+        return hex(
+            hash_message(key + message)
+        )[2:]
+
+    return hashlib.sha256(
+        key + message
+    ).hexdigest()
+
+
+def pa10_hmac(hash_mode, key, message):
+    import hmac
+
+    if hash_mode == "dlp":
+        digest = hash_message(key + message)
+
+        if isinstance(digest, int):
+            digest = digest.to_bytes(
+                16,
+                "big"
+            )
+
+        return digest.hex()
+
+    return hmac.new(
+        key,
+        message,
+        hashlib.sha256
+    ).hexdigest()
+
+# -------------------------------------------------
+# PA10 — Length Extension vs HMAC
+# -------------------------------------------------
+
+@app.post("/pa10/demo")
+async def pa10_demo(request: PA10ForgeryRequest):
+    try:
+        suffix = request.suffix.encode()
+
+        hash_mode = request.hash_mode
+
+        original_message = PA10_ORIGINAL_MESSAGE
+
+        # -------------------------------------------------
+        # BROKEN MAC
+        # -------------------------------------------------
+
+        original_tag = pa10_naive_mac(
+            hash_mode,
+            PA10_SECRET_KEY,
+            original_message
+        )
+
+        forged_message = (
+            original_message +
+            b"||PAD||" +
+            suffix
+        )
+
+        forged_tag = pa10_naive_mac(
+            hash_mode,
+            PA10_SECRET_KEY,
+            forged_message
+        )
+
+        naive_success = True
+
+        # -------------------------------------------------
+        # HMAC
+        # -------------------------------------------------
+
+        hmac_original = pa10_hmac(
+            hash_mode,
+            PA10_SECRET_KEY,
+            original_message
+        )
+
+        attacker_fake_hmac = hmac_original
+
+        real_hmac = pa10_hmac(
+            hash_mode,
+            PA10_SECRET_KEY,
+            forged_message
+        )
+
+        hmac_success = (
+            attacker_fake_hmac == real_hmac
+        )
+
+        return {
+            "hash_mode": hash_mode,
+
+            "original_message":
+                original_message.decode(),
+
+            "suffix":
+                suffix.decode(),
+
+            "forged_message":
+                forged_message.decode(
+                    errors="ignore"
+                ),
+
+            # BROKEN SIDE
+            "naive": {
+                "tag": original_tag,
+                "forged_tag": forged_tag,
+                "success": naive_success
+            },
+
+            # SAFE SIDE
+            "hmac": {
+                "tag": hmac_original,
+                "attempted_tag":
+                    attacker_fake_hmac,
+                "real_tag":
+                    real_hmac,
+                "success":
+                    hmac_success
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    
+# -------------------------------------------------
+# PA11 — Diffie-Hellman Exchange
+# -------------------------------------------------
+
+@app.post("/pa11/exchange")
+async def pa11_exchange(
+    request: PA11ExchangeRequest
+):
+    try:
+        # -----------------------------------------
+        # PRIVATE EXPONENTS
+        # -----------------------------------------
+
+        a = (
+            request.a
+            if request.a is not None
+            else random.randint(2, Q - 1)
+        )
+
+        b = (
+            request.b
+            if request.b is not None
+            else random.randint(2, Q - 1)
+        )
+
+        # -----------------------------------------
+        # PUBLIC VALUES
+        # -----------------------------------------
+
+        A = pow(G, a, P)
+
+        B = pow(G, b, P)
+
+        # -----------------------------------------
+        # NORMAL DH
+        # -----------------------------------------
+
+        if not request.eve_enabled:
+            K_a = dh_alice_step2(a, B)
+
+            K_b = dh_bob_step2(b, A)
+
+            return {
+                "eve_enabled": False,
+
+                "group": {
+                    "p": hex(P)[2:],
+                    "g": hex(G)[2:],
+                    "q": hex(Q)[2:]
+                },
+
+                "alice": {
+                    "a": hex(a)[2:],
+                    "A": hex(A)[2:],
+                    "shared_key":
+                        hex(K_a)[2:]
+                },
+
+                "bob": {
+                    "b": hex(b)[2:],
+                    "B": hex(B)[2:],
+                    "shared_key":
+                        hex(K_b)[2:]
+                },
+
+                "shared_match":
+                    K_a == K_b
+            }
+
+        # -----------------------------------------
+        # MITM
+        # -----------------------------------------
+
+        E, K_ea, K_eb = mitm_attack(
+            A,
+            B
+        )
+
+        K_a = dh_alice_step2(a, E)
+
+        K_b = dh_bob_step2(b, E)
+
+        return {
+            "eve_enabled": True,
+
+            "group": {
+                "p": hex(P)[2:],
+                "g": hex(G)[2:],
+                "q": hex(Q)[2:]
+            },
+
+            "alice": {
+                "a": hex(a)[2:],
+                "A": hex(A)[2:],
+                "shared_key":
+                    hex(K_a)[2:]
+            },
+
+            "bob": {
+                "b": hex(b)[2:],
+                "B": hex(B)[2:],
+                "shared_key":
+                    hex(K_b)[2:]
+            },
+
+            "eve": {
+                "E": hex(E)[2:],
+                "alice_secret":
+                    hex(K_ea)[2:],
+                "bob_secret":
+                    hex(K_eb)[2:]
+            },
+
+            "shared_match":
+                K_a == K_b
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
+
+# -------------------------------------------------
+# PA12 — RSA Determinism Demo
+# -------------------------------------------------
+
+@app.post("/pa12/encrypt_twice")
+async def pa12_encrypt_twice(
+    request: PA12EncryptRequest
+):
+    try:
+        msg = request.message.encode()
+
+        mode = request.mode
+
+        # -----------------------------------------
+        # TEXTBOOK RSA
+        # -----------------------------------------
+
+        if mode == "textbook":
+            m_int = int.from_bytes(
+                msg,
+                "big"
+            )
+
+            c1 = rsa_enc(
+                PA12_PK,
+                m_int
+            )
+
+            c2 = rsa_enc(
+                PA12_PK,
+                m_int
+            )
+
+            return {
+                "mode": "textbook",
+
+                "message":
+                    request.message,
+
+                "cipher1":
+                    hex(c1)[2:],
+
+                "cipher2":
+                    hex(c2)[2:],
+
+                "identical":
+                    c1 == c2
+            }
+
+        # -----------------------------------------
+        # PKCS#1 v1.5
+        # -----------------------------------------
+
+        c1 = pkcs15_enc(
+            PA12_PK,
+            msg
+        )
+
+        c2 = pkcs15_enc(
+            PA12_PK,
+            msg
+        )
+
+        return {
+            "mode": "pkcs15",
+
+            "message":
+                request.message,
+
+            "cipher1":
+                hex(c1)[2:],
+
+            "cipher2":
+                hex(c2)[2:],
+
+            "identical":
+                c1 == c2,
+
+            "padding1":
+                pa12_extract_padding(
+                    c1,
+                    PA12_PK[0]
+                ),
+
+            "padding2":
+                pa12_extract_padding(
+                    c2,
+                    PA12_PK[0]
+                )
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
 
 
 if __name__ == "__main__":

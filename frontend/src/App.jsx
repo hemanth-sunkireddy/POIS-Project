@@ -13,6 +13,12 @@ import PA17CCA from './components/PA17CCA';
 import PA18OT from './components/PA18OT';
 import PA20Millionaire from './components/PA20Millionaire';
 import PA19SecureAND from './components/PA19SecureAnd';
+import PA7MerkleDamgard from './components/PA7Merkle';
+import PA8DLPHash from './components/PA8DLPHash';
+import PA9BirthdayAttack from './components/PA9BirthdayAttack';
+import PA10LengthExtension from './components/PA10LengthExtension';
+import PA11DiffieHellman from './components/PA11DiffleHellman';
+import PA12RSADeterminism from './components/PA12RSA';
 
 const App = () => {
   const [foundation, setFoundation] = useState('DLP');
@@ -45,7 +51,13 @@ const App = () => {
         <PA4Modes />
         <PA5MAC />
         <PA6CCA />
-
+        <PA7MerkleDamgard />
+        <PA8DLPHash />
+        <PA9BirthdayAttack />
+        <PA10LengthExtension />
+        <PA11DiffieHellman />
+        <PA12RSADeterminism />
+        
         <PrimalityTester />
         <PA14CRT />
         <PA15DigitalSignatures />

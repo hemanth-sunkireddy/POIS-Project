@@ -1,5 +1,5 @@
 import os, math
-from pa8 import dlp_hash
+from pa8 import hash_message as dlp_hash
 
 # --- Truncated hash (FIXED: safe conversion to int) ---
 def trunc_hash(m: bytes, n: int) -> int:

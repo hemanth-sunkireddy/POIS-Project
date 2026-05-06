@@ -2,7 +2,7 @@
 
 import os
 import time
-from pa8 import dlp_hash
+from pa8 import hash_message as dlp_hash
 from pa3 import Enc, Dec
 
 
