@@ -238,11 +238,12 @@ class PA2PRFDistinguishRequest(BaseModel):
 
 # PA3 Models
 class PA3EncryptRequest(BaseModel):
-    k: int
+    k: str
     m: str
+    r_override: Optional[int] = None
 
 class PA3DecryptRequest(BaseModel):
-    k: int
+    k: str
     r: int
     c_hex: str
 
@@ -929,13 +930,36 @@ async def pa2_prf_distinguish(request: PA2PRFDistinguishRequest):
 # PA3 Endpoints
 @app.post("/pa3/encrypt")
 async def pa3_encrypt(request: PA3EncryptRequest):
-    r, c = cpa_enc(request.k, request.m.encode())
-    return {"r": r, "c_hex": c.hex()}
+    try:
+        val = request.k.strip()
+        # Consistently treat string keys as hex in PA3
+        k = int(val, 16) if not val.startswith('0d') else int(val[2:])
+        r, c = cpa_enc(k, request.m.encode(), r_override=request.r_override)
+        # Return r as a string to prevent Javascript precision loss (53-bit limit)
+        return {"r": str(r), "c_hex": c.hex()}
+    except Exception as e:
+        # Fallback to decimal if hex fails
+        try:
+            k = int(request.k.strip())
+            r, c = cpa_enc(k, request.m.encode(), r_override=request.r_override)
+            return {"r": str(r), "c_hex": c.hex()}
+        except:
+            raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/pa3/decrypt")
 async def pa3_decrypt(request: PA3DecryptRequest):
-    m = cpa_dec(request.k, request.r, bytes.fromhex(request.c_hex))
-    return {"m": m.decode(errors='ignore')}
+    try:
+        val = request.k.strip()
+        k = int(val, 16) if not val.startswith('0d') else int(val[2:])
+        m = cpa_dec(k, request.r, bytes.fromhex(request.c_hex))
+        return {"m": m.decode(errors='replace')}
+    except Exception as e:
+        try:
+            k = int(request.k.strip())
+            m = cpa_dec(k, request.r, bytes.fromhex(request.c_hex))
+            return {"m": m.decode(errors='replace')}
+        except:
+            raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/pa3/ind_cpa")
 async def pa3_ind_cpa(request: PA3INDCPAREquest):

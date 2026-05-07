@@ -4,7 +4,7 @@ from pa1 import prg
 
 # --- GGM Tree Construction ---
 class GGM_PRF:
-    def __init__(self, depth=8):
+    def __init__(self, depth=32):
         self.depth = depth
 
     def G(self, s: int) -> tuple:
