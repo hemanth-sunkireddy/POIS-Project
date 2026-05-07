@@ -11,7 +11,7 @@ def CCA_Enc(kE: int, kM: int, m: bytes):
     """
     r, ct = Enc(kE, m)
     # Serialize c for MAC: r (4 bytes) + ct
-    c_serialized = r.to_bytes(4, "big") + ct
+    c_serialized = r.to_bytes((r.bit_length() + 7) // 8, "big") + ct
     t = Mac(kM, c_serialized, mode="CBC")
     return (r, ct), t
 
@@ -23,7 +23,7 @@ def CCA_Dec(kE: int, kM: int, c, t):
     3. Else, return None (bottom)
     """
     r, ct = c
-    c_serialized = r.to_bytes(4, "big") + ct
+    c_serialized = r.to_bytes((r.bit_length() + 7) // 8, "big") + ct
     
     # 1. VERIFY FIRST (Verify-then-Decrypt)
     if not Vrfy(kM, c_serialized, t, mode="CBC"):
@@ -71,7 +71,7 @@ def key_reuse_demo(k: int, m: bytes):
     # The MAC's PRF and the encryption's PRF share the same key,
     # so the tag leaks structural information about the keystream.
     r3, ct3 = c3
-    c3_serialized = r3.to_bytes(4, "big") + ct3
+    c3_serialized = r3.to_bytes((r3.bit_length() + 7) // 8, "big") + ct3
     
     # Adversary observation: with key reuse, the MAC tag over the
     # ciphertext can be correlated with the encryption keystream.
